@@ -15,7 +15,7 @@ type Adc = Ads1x1x<I2cdev, Ads1115, Resolution16Bit, ads1x1x::mode::OneShot>;
 
 /// Read a single value from channel A.
 /// Returns 0 on Error.
-pub fn read(adc: &mut Adc) -> i16 {
+pub async fn read(adc: &mut Adc) -> i16 {
     block!(adc.read(channel::SingleA0)).unwrap_or(0)
 }
 

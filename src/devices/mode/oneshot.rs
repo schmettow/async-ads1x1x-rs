@@ -9,14 +9,14 @@ use crate::{
 
 impl<I2C, IC, CONV, E> Ads1x1x<I2C, IC, CONV, mode::OneShot>
 where
-    I2C: embedded_hal::i2c::I2c<Error = E>,
+    I2C: embedded_hal_async::i2c::I2c<Error = E>,
     CONV: conversion::ConvertMeasurement,
 {
     /// Changes to continuous operating mode.
-    pub fn into_continuous(
+    pub async fn into_continuous(
         mut self,
     ) -> Result<Ads1x1x<I2C, IC, CONV, mode::Continuous>, ModeChangeError<E, Self>> {
-        if let Err(Error::I2C(e)) = self.set_operating_mode(OperatingMode::Continuous) {
+        if let Err(Error::I2C(e)) = self.set_operating_mode(OperatingMode::Continuous).await {
             return Err(ModeChangeError::I2C(e, self));
         }
         Ok(Ads1x1x {
@@ -31,15 +31,15 @@ where
         })
     }
 
-    fn trigger_measurement(&mut self, config: &Config) -> Result<(), Error<E>> {
+    async fn trigger_measurement(&mut self, config: &Config) -> Result<(), Error<E>> {
         let config = config.with_high(BitFlags::OS);
-        self.write_register(Register::CONFIG, config.bits)
+        self.write_register(Register::CONFIG, config.bits).await
     }
 }
 
 impl<I2C, IC, CONV, E> Ads1x1x<I2C, IC, CONV, mode::OneShot>
 where
-    I2C: embedded_hal::i2c::I2c<Error = E>,
+    I2C: embedded_hal_async::i2c::I2c<Error = E>,
     CONV: conversion::ConvertMeasurement,
 {
     /// Requests that the ADC begins a conversion on the specified channel.
@@ -55,9 +55,10 @@ where
     /// measurement on a different channel is requested, a new measurement on
     /// using the new channel selection is triggered.
     #[allow(unused_variables)]
-    pub fn read<CH: ChannelId<Self>>(&mut self, channel: CH) -> nb::Result<i16, Error<E>> {
+    pub async fn read<CH: ChannelId<Self>>(&mut self, channel: CH) -> nb::Result<i16, Error<E>> {
         if self
             .is_measurement_in_progress()
+            .await
             .map_err(nb::Error::Other)?
         {
             return Err(nb::Error::WouldBlock);
@@ -68,12 +69,15 @@ where
             // result is ready
             let value = self
                 .read_register(Register::CONVERSION)
+                .await
                 .map_err(nb::Error::Other)?;
             self.a_conversion_was_started = false;
             return Ok(CONV::convert_measurement(value));
         }
-        self.trigger_measurement(&config)
-            .map_err(nb::Error::Other)?;
+        let _ = self
+            .trigger_measurement(&config)
+            .await
+            .map_err(nb::Error::Other);
         self.config = config;
         self.a_conversion_was_started = true;
         Err(nb::Error::WouldBlock)
